@@ -28,3 +28,6 @@ func (*client) ConnectWPAPSK(_ *Interface, _, _ string) error    { return errUni
 func (*client) SetDeadline(t time.Time) error                    { return errUnimplemented }
 func (*client) SetReadDeadline(t time.Time) error                { return errUnimplemented }
 func (*client) SetWriteDeadline(t time.Time) error               { return errUnimplemented }
+func (*client) TriggerScan(_ *Interface) error                   { return errUnimplemented }
+func (*client) ScanResults(_ *Interface) ([]*BSS, error)         { return nil, errUnimplemented }
+func (*client) WiPhys() error                                    { return errUnimplemented }

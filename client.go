@@ -42,9 +42,22 @@ func (c *Client) ConnectWPAPSK(ifi *Interface, ssid, psk string) error {
 	return c.c.ConnectWPAPSK(ifi, ssid, psk)
 }
 
+func (c *Client) WiPhys() error {
+	return c.c.WiPhys()
+}
+
 // Interfaces returns a list of the system's WiFi network interfaces.
 func (c *Client) Interfaces() ([]*Interface, error) {
 	return c.c.Interfaces()
+}
+
+// TriggerScan triggers a WiFi scan on the specified interface.
+func (c *Client) TriggerScan(ifi *Interface) error {
+	return c.c.TriggerScan(ifi)
+}
+
+func (c *Client) ScanResults(ifi *Interface) ([]*BSS, error) {
+	return c.c.ScanResults(ifi)
 }
 
 // BSS retrieves the BSS associated with a WiFi interface.

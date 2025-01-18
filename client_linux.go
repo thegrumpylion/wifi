@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"os"
 	"time"
@@ -69,6 +70,32 @@ func initClient(c *genetlink.Conn) (*client, error) {
 // Close closes the client's generic netlink connection.
 func (c *client) Close() error { return c.c.Close() }
 
+func (c *client) WiPhys() error {
+	msgs, err := c.get(
+		unix.NL80211_CMD_GET_WIPHY,
+		netlink.Dump,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return err
+	}
+
+	for i, m := range msgs {
+		fmt.Println("idx", i)
+		fmt.Printf("Command: %x\n", m.Header.Command)
+		attrs, err := netlink.UnmarshalAttributes(m.Data)
+		if err != nil {
+			return err
+		}
+		for _, a := range attrs {
+			fmt.Printf("Type: %x\n", a.Type)
+		}
+	}
+
+	return nil
+}
+
 // Interfaces requests that nl80211 return a list of all WiFi interfaces present
 // on this system.
 func (c *client) Interfaces() ([]*Interface, error) {
@@ -84,6 +111,19 @@ func (c *client) Interfaces() ([]*Interface, error) {
 	}
 
 	return parseInterfaces(msgs)
+}
+
+// TriggerScan start scannig for networks
+func (c *client) TriggerScan(ifi *Interface) error {
+	_, err := c.get(
+		unix.NL80211_CMD_TRIGGER_SCAN,
+		netlink.Acknowledge,
+		ifi,
+		func(ae *netlink.AttributeEncoder) {
+			ae.Bytes(unix.NL80211_ATTR_MAC, ifi.HardwareAddr)
+		},
+	)
+	return err
 }
 
 // Connect starts connecting the interface to the specified ssid.
@@ -149,6 +189,24 @@ func wpaPassphrase(ssid, psk []byte) []byte {
 	return pbkdf2.Key(psk, ssid, 4096, 32, sha1.New)
 }
 
+func (c *client) ScanResults(ifi *Interface) ([]*BSS, error) {
+	msgs, err := c.get(
+		unix.NL80211_CMD_GET_SCAN,
+		netlink.Dump,
+		ifi,
+		func(ae *netlink.AttributeEncoder) {
+			if ifi.HardwareAddr != nil {
+				ae.Bytes(unix.NL80211_ATTR_MAC, ifi.HardwareAddr)
+			}
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseNewScanResults(msgs)
+}
+
 // BSS requests that nl80211 return the BSS for the specified Interface.
 func (c *client) BSS(ifi *Interface) (*BSS, error) {
 	msgs, err := c.get(
@@ -163,6 +221,13 @@ func (c *client) BSS(ifi *Interface) (*BSS, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+	fmt.Println("In BSS")
+
+	for i, m := range msgs {
+		fmt.Println("idx", i)
+		fmt.Printf("Command: %x/n", m.Header.Command)
+		fmt.Println(m.Data)
 	}
 
 	return parseBSS(msgs)
@@ -328,6 +393,37 @@ func (ifi *Interface) parseAttributes(attrs []netlink.Attribute) error {
 	}
 
 	return nil
+}
+
+func parseNewScanResults(msgs []genetlink.Message) ([]*BSS, error) {
+	bsss := make([]*BSS, 0, len(msgs))
+	for i, m := range msgs {
+		fmt.Println("Parsing Scan res", i)
+		attrs, err := netlink.UnmarshalAttributes(m.Data)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, a := range attrs {
+			if a.Type != unix.NL80211_ATTR_BSS {
+				continue
+			}
+
+			nattrs, err := netlink.UnmarshalAttributes(a.Data)
+			if err != nil {
+				return nil, err
+			}
+
+			var bss BSS
+			if err := (&bss).parseAttributes(nattrs); err != nil {
+				return nil, err
+			}
+
+			bsss = append(bsss, &bss)
+		}
+	}
+
+	return bsss, nil
 }
 
 // parseBSS parses a single BSS with a status attribute from nl80211 BSS messages.
